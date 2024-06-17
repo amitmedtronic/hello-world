@@ -1,18 +1,36 @@
-<!DOCTYPE html>
+FROM golang:1.17-alpine AS builder
+# Use an official Go runtime as a parent image
+#FROM golang:alpine AS builder
 
-<html>
-<head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
-  <title>my-first-website</title>
-  <LINK href="styles.css" rel="stylesheet" type="text/css">
-</head>
+# Install necessary packages
+RUN apk --no-cache upgrade && \
+    apk --no-cache add alpine-sdk git
 
-<body>
+# Install govendor for dependency management
+RUN go get -u github.com/kardianos/govendor
 
-<img src="https://octodex.github.com/images/daftpunktocat-thomas.gif" id="octocat" alt="octocat-gif" />
+# Set the Current Working Directory inside the container
+WORKDIR /go/src/github.com/brandond/syslog_ng_exporter/
 
-<!-- Change this code here by copy and pasting your template on line 15 -->
-<p>Welcome to your first GitHub Pages website!</p>
+# Copy everything from the current directory to the container's work directory.
+COPY ./ /go/src/github.com/brandond/syslog_ng_exporter/
 
-</body>
-</html>
+# Disable Go modules explicitly
+ENV GO111MODULE=off
+
+# Fetch vendor dependencies using govendor
+RUN /go/bin/govendor sync
+
+# Build the project
+RUN go build -o syslog-ng-exporter .
+
+# Use a minimal base image for the final image
+FROM quay.io/prometheus/busybox:latest
+LABEL maintainer="Brad Davidson <brad@oatmail.org>"
+
+# Copy the binary from the builder stage
+COPY --from=builder /go/src/github.com/brandond/syslog_ng_exporter/syslog-ng-exporter /bin/syslog-ng-exporter
+
+# Run the binary program produced by `go build`
+ENTRYPOINT ["/bin/syslog-ng-exporter"]
+EXPOSE 9577
